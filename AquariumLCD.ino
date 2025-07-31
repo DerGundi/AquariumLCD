@@ -41,7 +41,8 @@ DallasTemperature sensors(&tempSensor);
 //Startwerte
 float temperatur;
 float vorherigeTemperatur;
-int count;
+volatile int seconds;
+unsigned long lastTime = 0;
 
 //Erhöhung des rpmCounts in einem Interrupt, damit der Wert nicht verfälscht wird
 //Quasi eine Art Semaphorenprinzip
@@ -53,7 +54,7 @@ void temperaturSteuerung(){
   //Lüftersteuerung und Lastausgabe:
   lcd.setCursor(4,1);
   if(temperatur < 19.4){
-    analogWrite(rpmOutPin, 0); //Unter 19 kann aus
+    analogWrite(rpmOutPin, 0); //Unter 19.4 kann aus
     lcd.print("0");            //PWM Duty ausgeben
   }else if(temperatur > 20.5){
     analogWrite(rpmOutPin, 63); //Vollast ab 20.6 Grad
@@ -64,6 +65,7 @@ void temperaturSteuerung(){
     lcd.print(round(100 * temperatur - 1940) * 100 / 120 ); //PWM Duty in Prozent ausgeben
     lcd.print(" ");
   }
+  
 }
 
 void setup() {
@@ -102,6 +104,9 @@ void setup() {
   lcd.print("RPM:");
 
   //Ab jetzt die Temperatursteuerung schonmal das erste Mal laufen lassen
+  //Temperaturen setzen, vorherige bekommen zum start die selbe
+ // temperatur = round(sensors.getTempCByIndex(0) * 10.0) / 10.0;
+  //vorherigeTemperatur = temperatur;
   temperaturSteuerung();
 }
 
@@ -112,16 +117,24 @@ void loop() {
   rpmCount = 0;
   interrupts();
   //und wieder einschalten. Dadurch werden die Interrups ausgeführt und die Anzahl der Impulse des RPM-Gebers gezählt
+  /*unsigned long currentTime = millis();
+  while(currentTime - lastTime < 1001){
+    currentTime = millis();
+    if(currentTime - lastTime > 1001){
+      break;
+    }
+  }
+  lastTime = currentTime;*/
   delay(1000);
   //Dafür hat das ganze eine Sekunde Zeit
 
-  //Selbes Spiel wie gerade, damit der Wert von count nicht verfälscht wird, schalten wir die Interrupts solagne aus und danach wieder ein
+  //Selbes Spiel wie gerade, damit der Wert von seconds nicht verfälscht wird, schalten wir die Interrupts solagne aus und danach wieder ein
   noInterrupts();
-  unsigned long count = rpmCount;
+  unsigned long rcount = rpmCount;
   interrupts();
 
   //Berechnung der rpm: Da wir doppelt so viel Messen wie nötig, wird Wert um 2 geteilt und dann mit 60 (die Sekuden) multipliziert
-  int rpm = (count / 2) * 60;
+  int rpm = (rcount / 2) * 60;
   //Ausgabe der rpm auf LCD
   lcd.setCursor(12, 1);
   lcd.print(rpm);
@@ -136,27 +149,29 @@ void loop() {
   temperatur = round(sensors.getTempCByIndex(0) * 10.0) / 10.0;
   
   //Lüftergeschwindigkeit soll sich erst ändern, wenn der vorherige Wert 10 Sekunden lang verändert ist
-  if((abs(temperatur - vorherigeTemperatur) <= 0.1) && temperatur < 20.6 && temperatur > 19.3){
-    count++;
-    if(count > 9){
+ /* float changedTemp = temperatur - vorherigeTemperatur;
+  if((abs(changedTemp) >= 0.10)){
+    seconds++;
+    Serial.print("Changed Seconds: ");
+    Serial.println(seconds);
+    if(seconds > 9){
+      seconds =  0;
+      vorherigeTemperatur = temperatur;
+      Serial.println("Seconds reset!");
       temperaturSteuerung();
     }
   }else{
-    vorherigeTemperatur = temperatur;
-    count = 0;
-    temperaturSteuerung();
-  }
+    seconds = 0;
+  }*/
+  temperaturSteuerung();
   lcd.setCursor(11, 0);
-
   // Temperatur anzeigen
   lcd.print(temperatur);
-  
   //° Gradzeichen
   lcd.setCursor(15, 0);
   lcd.write(223);
-  }
-  //Wenn der Sensor defekt ist
-  else{
+
+  }else{ //Wenn der Sensor defekt ist
     lcd.clear();
     lcd.print("TEMPSENSOR");
     lcd.setCursor(0,1);
@@ -164,17 +179,20 @@ void loop() {
     while(sensors.getTempCByIndex(0) == DEVICE_DISCONNECTED_C){
       //Wenn Temperatursensor ausfällt, ist Kühlung besser als Hitzestau, daher Volllast.
       analogWrite(rpmOutPin, 63);
-      
     }
+    Serial.print("Sperre aufgehoben");
     lcd.clear();
     lcd.flush();
     delay(750);
     setup();
-    break;
   }
 
   //Ausgabe PWM und RPM in die Console
-  Serial.print("PWM: ");
+  Serial.print("TempJ: ");
+  Serial.print(temperatur);
+  Serial.print(", TempV: ");
+  Serial.print(vorherigeTemperatur);
+  Serial.print(", PWM: ");
   Serial.print(constrain(round(100 * temperatur - 1940) * 63 / 120, 0, 63)); //Falls Wert rechnerisch über 63 
   Serial.print(", RPM: ");
   Serial.println(rpm);
