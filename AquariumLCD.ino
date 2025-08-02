@@ -147,8 +147,14 @@ void loop() {
   //Temperatur abfragen
   temperatur = round(sensors.getTempCByIndex(0) * 10.0) / 10.0; //Auf eine Dezimalstelle runden
   
+  //Plausibilitätsprüfung, wenn wir über und unter diesen Grenzen sind, kann der Sensor nicht funktionieren
+   //oder die Lotl sind zu Eiswürfeln bzw. Fischstäbchen geworden.
+  if(temperatur <= 10 || temperatur >= 31){
+    sensorDefekt();
+  }
+
   //10 Sekunden Threshold, um die Lüfter zu steuern
-  if(temperatur != vorherigeTemperatur && temperatur < 20.5 && temperatur > 19.5){
+  if(temperatur != vorherigeTemperatur || vorherigeTemperatur == 0 && temperatur < 20.5 && temperatur > 19.5){
     seconds++;
     Serial.print("Changed Seconds: ");
     Serial.println(seconds);
@@ -165,17 +171,8 @@ void loop() {
 
 
 
-   //Plausibilitätsprüfung, wenn wir über und unter diesen Grenzen sind, kann der Sensor nicht funktionieren
-   //oder die Lotl sind zu Eiswürfeln bzw. Fischstäbchen geworden.
-  if(temperatur <= 10 || temperatur >= 31){
-    sensorDefekt();
-  }
+ 
 
-
-
-
-
-  temperaturSteuerung();
   
   
 
