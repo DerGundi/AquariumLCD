@@ -31,7 +31,7 @@ int rpmOutPin = 3;
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
 
 //Für die RPM-Messung
-volatile unsigned long rpmCount = 0;
+volatile long rpmCount = 0;
 
 //Definiere Sensor als OneWire Objekt
 OneWire tempSensor(tempPin);
@@ -50,12 +50,29 @@ void rpmISR(){
     rpmCount++;
 }
 
+//Startprozedur, ausgelagert da möglicherweise mehrfach aufgerufen werden kann
+void startUpProcedure(){
+  //Temperatursonde; wir müssen der Bibliothek tatsächlich sagen, dass sie anfangen soll
+  sensors.begin();
+
+  //Vorschreiben von Werten auf LCD:
+  //Temperatur:
+  lcd.print("Temperatur:");
+  //Last:
+  lcd.setCursor(0,1);
+  lcd.print("DTY:"); //DTY für Duty
+  //RPM:
+  lcd.setCursor(8,1);
+  lcd.print("RPM:");
+}
+
 void temperaturSteuerung(){
   //Lüftersteuerung und Lastausgabe:
   lcd.setCursor(4,1);
   if(temperatur < 19.4){
     analogWrite(rpmOutPin, 0); //Unter 19.4 kann aus
     lcd.print("0");            //PWM Duty ausgeben
+    lcd.print("  ");           //Leerzeichen um alte Zahlen zu entfernen
   }else if(temperatur > 20.5){
     analogWrite(rpmOutPin, 63); //Vollast ab 20.6 Grad
     lcd.print("100");           //PWM Duty ausgeben
@@ -65,7 +82,25 @@ void temperaturSteuerung(){
     lcd.print(round(100 * temperatur - 1940) * 100 / 120 ); //PWM Duty in Prozent ausgeben
     lcd.print(" ");
   }
-  
+}
+
+//Falls Sensor defekt, Lüfter auf 100%. Kühle ist besser als Wärme
+void sensorDefekt(){
+  analogWrite(rpmOutPin, 63);
+  lcd.clear();
+  delay(1000); //LCD Zeit geben, um zu leeren
+  lcd.setCursor(0,0);
+  lcd.print("Tempsensor");
+  lcd.setCursor(0,1);
+  lcd.print("defekt!");
+  while(temperatur <= 10 || temperatur >= 31){
+    temperatur = sensors.getTempCByIndex(0);
+    delay(5000); //Sensor Zeit geben um wieder gefunden werden zu können
+  }
+  lcd.clear();
+  lcd.setCursor(0,0);
+  //Von vorn anfangen
+  setup();
 }
 
 void setup() {
@@ -85,72 +120,35 @@ void setup() {
   //PWM OUTPUT
   pinMode(rpmOutPin, OUTPUT);
   //analogWrite(rpmOutPin, 63); //PWM Signal für Lüfter, Intervall 0-63
+  //analogWrite(rpmOutPin, 0);
 
   //RPM INPUT
-  pinMode(rpmInPin, INPUT);
+  pinMode(rpmInPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(rpmInPin), rpmISR, RISING);
 
-  //Temperatursonde; wir müssen der Bibliothek tatsächlich sagen, dass sie anfangen soll
-  sensors.begin();
-
-  //Vorschreiben von Werten auf LCD:
-  //Temperatur:
-  lcd.print("Temperatur:");
-  //Last:
-  lcd.setCursor(0,1);
-  lcd.print("DTY:"); //DTY für Duty
-  //RPM:
-  lcd.setCursor(8,1);
-  lcd.print("RPM:");
-
-  //Ab jetzt die Temperatursteuerung schonmal das erste Mal laufen lassen
-  //Temperaturen setzen, vorherige bekommen zum start die selbe
- // temperatur = round(sensors.getTempCByIndex(0) * 10.0) / 10.0;
-  //vorherigeTemperatur = temperatur;
-  temperaturSteuerung();
+  startUpProcedure();
 }
 
 void loop() {
-  //RPM Zählung
-  //Damit beim Zurücksetzen des rpmCounts nichts dazwischenfunkt, die Interrupts ausschalten
-  noInterrupts(); 
+  //Sensordaten abfragen
+  sensors.requestTemperatures();
+  //RPM zurücksetzen
+  noInterrupts();
   rpmCount = 0;
   interrupts();
-  //und wieder einschalten. Dadurch werden die Interrups ausgeführt und die Anzahl der Impulse des RPM-Gebers gezählt
-  /*unsigned long currentTime = millis();
-  while(currentTime - lastTime < 1001){
-    currentTime = millis();
-    if(currentTime - lastTime > 1001){
-      break;
-    }
-  }
-  lastTime = currentTime;*/
-  delay(1000);
-  //Dafür hat das ganze eine Sekunde Zeit
 
-  //Selbes Spiel wie gerade, damit der Wert von seconds nicht verfälscht wird, schalten wir die Interrupts solagne aus und danach wieder ein
+  delay(1000); //Sensor Zeit geben, dabei Pulse zählen
+
+  //Pulse auswerten
   noInterrupts();
-  unsigned long rcount = rpmCount;
+  long measuredRPM = rpmCount * 30; // RPM / Zeit * 2, also RPM / 60 * 2 -> rpm * 30
   interrupts();
 
-  //Berechnung der rpm: Da wir doppelt so viel Messen wie nötig, wird Wert um 2 geteilt und dann mit 60 (die Sekuden) multipliziert
-  int rpm = (rcount / 2) * 60;
-  //Ausgabe der rpm auf LCD
-  lcd.setCursor(12, 1);
-  lcd.print(rpm);
-  lcd.print("   "); //Lerzeichen, damit alte Zahlen gelöscht werden
-  
   //Temperatur abfragen
-  sensors.requestTemperatures();
-
-  //Sollte der Sensor keinen(!) Defekt aufweisen
-  if(sensors.getTempCByIndex(0) != DEVICE_DISCONNECTED_C){
-  //auf eine Dezimalstelle runden
-  temperatur = round(sensors.getTempCByIndex(0) * 10.0) / 10.0;
+  temperatur = round(sensors.getTempCByIndex(0) * 10.0) / 10.0; //Auf eine Dezimalstelle runden
   
-  //Lüftergeschwindigkeit soll sich erst ändern, wenn der vorherige Wert 10 Sekunden lang verändert ist
- /* float changedTemp = temperatur - vorherigeTemperatur;
-  if((abs(changedTemp) >= 0.10)){
+  //10 Sekunden Threshold, um die Lüfter zu steuern
+  if(temperatur != vorherigeTemperatur && temperatur < 20.5 && temperatur > 19.5){
     seconds++;
     Serial.print("Changed Seconds: ");
     Serial.println(seconds);
@@ -159,42 +157,45 @@ void loop() {
       vorherigeTemperatur = temperatur;
       Serial.println("Seconds reset!");
       temperaturSteuerung();
-    }
-  }else{
+  }
+}else{
+    vorherigeTemperatur = temperatur;
     seconds = 0;
-  }*/
-  temperaturSteuerung();
-  lcd.setCursor(11, 0);
-  // Temperatur anzeigen
-  lcd.print(temperatur);
-  //° Gradzeichen
-  lcd.setCursor(15, 0);
-  lcd.write(223);
-
-  }else{ //Wenn der Sensor defekt ist
-    lcd.clear();
-    lcd.print("TEMPSENSOR");
-    lcd.setCursor(0,1);
-    lcd.print("DEFEKT!");
-    while(sensors.getTempCByIndex(0) == DEVICE_DISCONNECTED_C){
-      //Wenn Temperatursensor ausfällt, ist Kühlung besser als Hitzestau, daher Volllast.
-      analogWrite(rpmOutPin, 63);
-    }
-    Serial.print("Sperre aufgehoben");
-    lcd.clear();
-    lcd.flush();
-    delay(750);
-    setup();
   }
 
-  //Ausgabe PWM und RPM in die Console
-  Serial.print("TempJ: ");
+
+
+   //Plausibilitätsprüfung, wenn wir über und unter diesen Grenzen sind, kann der Sensor nicht funktionieren
+   //oder die Lotl sind zu Eiswürfeln bzw. Fischstäbchen geworden.
+  if(temperatur <= 10 || temperatur >= 31){
+    sensorDefekt();
+  }
+
+
+
+
+
+  temperaturSteuerung();
+  
+  
+
+
+  //Ausgabe auf LCD
+  lcd.setCursor(11,0);
+  lcd.print(temperatur); //Runden auf eine Nachkommastelle
+  lcd.write(223); //° Gradzeichen
+  lcd.print("C");
+
+  lcd.setCursor(12,1);
+  lcd.print(measuredRPM);
+
+  //Ausgabe in die Console
+  Serial.print("Temp: ");
   Serial.print(temperatur);
-  Serial.print(", TempV: ");
-  Serial.print(vorherigeTemperatur);
   Serial.print(", PWM: ");
   Serial.print(constrain(round(100 * temperatur - 1940) * 63 / 120, 0, 63)); //Falls Wert rechnerisch über 63 
   Serial.print(", RPM: ");
-  Serial.println(rpm);
+  Serial.print(measuredRPM);
+  Serial.println("");
 }
 
