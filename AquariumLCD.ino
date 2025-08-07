@@ -41,8 +41,11 @@ DallasTemperature sensors(&tempSensor);
 //Startwerte
 float temperatur;
 float vorherigeTemperatur;
+float maxTemp = 20.2;
+float minTemp = 19.0;
 volatile int seconds;
 unsigned long lastTime = 0;
+
 
 //Erhöhung des rpmCounts in einem Interrupt, damit der Wert nicht verfälscht wird
 //Quasi eine Art Semaphorenprinzip
@@ -69,12 +72,12 @@ void startUpProcedure(){
 void temperaturSteuerung(){
   //Lüftersteuerung und Lastausgabe:
   lcd.setCursor(4,1);
-  if(temperatur < 19.4){
-    analogWrite(rpmOutPin, 0); //Unter 19.4 kann aus
+  if(temperatur < minTemp){
+    analogWrite(rpmOutPin, 0); //Unter 19.0 kann aus
     lcd.print("0");            //PWM Duty ausgeben
     lcd.print("  ");           //Leerzeichen um alte Zahlen zu entfernen
-  }else if(temperatur > 20.5){
-    analogWrite(rpmOutPin, 63); //Vollast ab 20.6 Grad
+  }else if(temperatur > maxTemp){
+    analogWrite(rpmOutPin, 63); //Vollast ab 20.2 Grad
     lcd.print("100");           //PWM Duty ausgeben
   }else{
     analogWrite(rpmOutPin, round(100 * temperatur - 1940) * 63 / 120); //Lineare Steigung
@@ -145,7 +148,7 @@ void loop() {
   interrupts();
 
   //Temperatur abfragen
-  temperatur = round(sensors.getTempCByIndex(0) * 10.0) / 10.0; //Auf eine Dezimalstelle runden
+  temperatur = round(sensors.getTempCByIndex(0) * 10) / 10.0; //Auf eine Dezimalstelle runden
   
   //Plausibilitätsprüfung, wenn wir über und unter diesen Grenzen sind, kann der Sensor nicht funktionieren
    //oder die Lotl sind zu Eiswürfeln bzw. Fischstäbchen geworden.
@@ -154,7 +157,7 @@ void loop() {
   }
 
   //10 Sekunden Threshold, um die Lüfter zu steuern
-  if(temperatur != vorherigeTemperatur || vorherigeTemperatur == 0 && temperatur < 20.5 && temperatur > 19.5){
+  if(temperatur != vorherigeTemperatur || (vorherigeTemperatur == 0 && (temperatur < maxTemp && temperatur > minTemp))){
     seconds++;
     Serial.print("Changed Seconds: ");
     Serial.println(seconds);
