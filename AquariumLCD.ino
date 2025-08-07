@@ -80,9 +80,9 @@ void temperaturSteuerung(){
     analogWrite(rpmOutPin, 63); //Vollast ab 20.2 Grad
     lcd.print("100");           //PWM Duty ausgeben
   }else{
-    analogWrite(rpmOutPin, round(100 * temperatur - 1940) * 63 / 120); //Lineare Steigung
+    analogWrite(rpmOutPin, round(100 * temperatur - 1900) * 63 / 120); //Lineare Steigung
     //Temperatur - maximal relevante Temperatur (19,4) * die maximale Anzahl an PWM-Stufen (63) / 120 zur Normalisierung
-    lcd.print(round(100 * temperatur - 1940) * 100 / 120 ); //PWM Duty in Prozent ausgeben
+    lcd.print(round(100 * temperatur - 1900) * 100 / 120 ); //PWM Duty in Prozent ausgeben
     lcd.print(" ");
   }
 }
@@ -193,7 +193,7 @@ void loop() {
   Serial.print("Temp: ");
   Serial.print(temperatur);
   Serial.print(", PWM: ");
-  Serial.print(constrain(round(100 * temperatur - 1940) * 63 / 120, 0, 63)); //Falls Wert rechnerisch über 63 
+  Serial.print(constrain(round(100 * temperatur - 1900) * 63 / 120, 0, 63)); //Falls Wert rechnerisch über 63 
   Serial.print(", RPM: ");
   Serial.print(measuredRPM);
   Serial.println("");
