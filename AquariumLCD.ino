@@ -55,10 +55,7 @@ void rpmISR(){
 
 //Startprozedur, ausgelagert da möglicherweise mehrfach aufgerufen werden kann
 void startUpProcedure(){
-  //Temperatursonde; wir müssen der Bibliothek tatsächlich sagen, dass sie anfangen soll
-  sensors.begin();
-
-  //Vorschreiben von Werten auf LCD:
+   //Vorschreiben von Werten auf LCD:
   //Temperatur:
   lcd.print("Temperatur:");
   //Last:
@@ -87,38 +84,26 @@ void temperaturSteuerung(){
   }
 }
 
-//Falls Sensor defekt, Lüfter auf 100%. Kühle ist besser als Wärme
-void sensorDefekt(){
-  analogWrite(rpmOutPin, 63);
-  lcd.clear();
-  delay(1000); //LCD Zeit geben, um zu leeren
-  lcd.setCursor(0,0);
-  lcd.print("Tempsensor");
-  lcd.setCursor(0,1);
-  lcd.print("defekt!");
-  while(temperatur <= 10 || temperatur >= 31){
-    temperatur = sensors.getTempCByIndex(0);
-    delay(5000); //Sensor Zeit geben um wieder gefunden werden zu können
-  }
-  lcd.clear();
-  lcd.setCursor(0,0);
-  //Von vorn anfangen
-  setup();
-}
-
 void setup() {
   //Console aktivieren
-  Serial.begin(9600);
+  Serial.begin(115200);
 
+//Temperatursonde; wir müssen der Bibliothek tatsächlich sagen, dass sie anfangen soll
+  sensors.begin();
+
+  delay(500);
   //LCDs Höhe und Breite definieren
   lcd.begin(16, 2);
 
   //PWM Pin auf 25kHz erhöhen, dafür Timer2 anpassen
+  
   TCCR2A = 0;
   TCCR2B = 0;
+  OCR2A = 63;
+  OCR2B = 0;
   TCCR2A = (1 << COM2B1) | (1 << WGM21) | (1 << WGM20); // Fast PWM, non-inverting auf OC2B
   TCCR2B = (1 << WGM22) | (1 << CS20); // WGM22=1 für TOP=OCR2A, Prescaler=1
-  OCR2A = 63;
+  
 
   //PWM OUTPUT
   pinMode(rpmOutPin, OUTPUT);
@@ -126,7 +111,7 @@ void setup() {
   //analogWrite(rpmOutPin, 0);
 
   //RPM INPUT
-  pinMode(rpmInPin, INPUT_PULLUP);
+  pinMode(rpmInPin, INPUT);
   attachInterrupt(digitalPinToInterrupt(rpmInPin), rpmISR, RISING);
 
   startUpProcedure();
@@ -152,8 +137,22 @@ void loop() {
   
   //Plausibilitätsprüfung, wenn wir über und unter diesen Grenzen sind, kann der Sensor nicht funktionieren
    //oder die Lotl sind zu Eiswürfeln bzw. Fischstäbchen geworden.
+  //Falls Sensor defekt, Lüfter auf 100%. Kühle ist besser als Wärme
   if(temperatur <= 10 || temperatur >= 31){
-    sensorDefekt();
+  analogWrite(rpmOutPin, 63);
+  lcd.clear();
+  delay(1000); //LCD Zeit geben, um zu leeren
+  lcd.setCursor(0,0);
+  lcd.print("Tempsensor");
+  lcd.setCursor(0,1);
+  lcd.print("defekt!");
+    while(temperatur <= 10 || temperatur >= 31){
+      temperatur = sensors.getTempCByIndex(0);
+      delay(5000); //Sensor Zeit geben um wieder gefunden werden zu können
+    }
+  lcd.clear();
+  lcd.setCursor(0,0);
+  startUpProcedure();
   }
 
   //10 Sekunden Threshold, um die Lüfter zu steuern
@@ -171,14 +170,6 @@ void loop() {
     vorherigeTemperatur = temperatur;
     seconds = 0;
   }
-
-
-
- 
-
-  
-  
-
 
   //Ausgabe auf LCD
   lcd.setCursor(11,0);
